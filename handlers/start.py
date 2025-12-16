@@ -12,7 +12,6 @@ start_router = Router()
 
 def get_main_menu_keyboard(lang: str = "en") -> ReplyKeyboardMarkup:
     """Create main menu keyboard with translated options."""
-    # Maps internal keys to translated text
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=get_text(lang, "youtube_premium"))],
@@ -58,22 +57,27 @@ async def cmd_start(message: Message, state: FSMContext):
 @start_router.message(Command("help"))
 @start_router.message(F.text.in_(["ℹ️ Help", "ℹ️ मदद", "ℹ️ সাহায্য"]))
 async def cmd_help(message: Message, state: FSMContext):
-    """Show help information in correct language."""
+    """Show help information."""
     lang = await get_user_language(state)
-    # Uses 'help' key from translations which contains the full help text
     help_text = get_text(lang, "help") 
     await message.answer(help_text, parse_mode="HTML")
 
 @start_router.message(Command("status"))
 @start_router.message(F.text.in_(["📊 My Status", "📊 मेरी स्थिति", "📊 আমার স্ট্যাটাস"]))
 async def cmd_status(message: Message, state: FSMContext):
-    """Show status in correct language."""
+    """Show status."""
     lang = await get_user_language(state)
-    # Simple status check - for full translation, ensure 'my_status' keys exist for body text
-    # For now, we keep the dynamic logic but use the header from translations
+    user_data = await state.get_data()
     status_header = get_text(lang, "my_status")
-    await message.answer(f"{status_header}: Checking...", parse_mode="HTML")
-    # (Existing status logic continues...)
+    
+    status_text = f"📊 <b>{status_header}</b>\n\n"
+    status_text += f"👤 Name: {message.from_user.first_name}\n"
+    status_text += f"🆔 User ID: <code>{message.from_user.id}</code>\n"
+    
+    plan_name = user_data.get('plan_name', 'Not Active')
+    status_text += f"💎 Plan: {plan_name}"
+    
+    await message.answer(status_text, parse_mode="HTML")
 
 @start_router.message(Command("support"))
 @start_router.message(F.text.in_(["💬 Support", "💬 सहायता", "💬 সাপোর্ট"]))
