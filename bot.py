@@ -1,92 +1,60 @@
-import asyncio
-import logging
-import os
-from aiohttp import web
+render_ready_main.py
 
-from aiogram import Bot, Dispatcher
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import ErrorEvent
+Single-file, Render-friendly entrypoint for your Aiogram bot
 
-from config import BOT_TOKEN
-from handlers.start import start_router
-from handlers.premium import premium_router
-from handlers.admin import admin_router
+Merged routers: start, premium, admin, language
 
-# -------------------- Logging --------------------
+Includes aiohttp health server for Render Web Service
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+import os import asyncio import logging from datetime import datetime
 
-# -------------------- Bot Setup --------------------
+from aiohttp import web from aiogram import Bot, Dispatcher from aiogram.enums import ParseMode from aiogram.fsm.storage.memory import MemoryStorage
 
-bot = Bot(token=BOT_TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
+====== ENV ======
 
-# -------------------- Error Handler --------------------
+BOT_TOKEN = os.getenv("BOT_TOKEN") ADMIN_ID = int(os.getenv("ADMIN_ID", "0")) PORT = int(os.getenv("PORT", "10000"))
 
-@dp.error()
-async def error_handler(event: ErrorEvent):
-    logger.error("Unhandled error", exc_info=event.exception)
-    try:
-        if event.update.message:
-            await event.update.message.answer(
-                "⚠️ An error occurred. Please try again later."
-            )
-        elif event.update.callback_query:
-            await event.update.callback_query.answer(
-                "⚠️ An error occurred.",
-                show_alert=True
-            )
-    except Exception as e:
-        logger.error(f"Error while sending error message: {e}")
+if not BOT_TOKEN or ADMIN_ID == 0: raise SystemExit("Set BOT_TOKEN and ADMIN_ID env vars")
 
-# =====================================================
-# Render Web Service – Health Check Server
-# =====================================================
+====== LOGGING ======
 
-async def health_check(request):
-    """Health check endpoint for Render."""
-    return web.Response(text="Bot is running!")
+logging.basicConfig(level=logging.INFO) logger = logging.getLogger(name)
 
-async def start_web_server():
-    """Start a simple web server for Render's health checks."""
-    app = web.Application()
-    app.router.add_get("/", health_check)
-    app.router.add_get("/health", health_check)
+====== IMPORT ROUTERS ======
 
-    port = int(os.getenv("PORT", 10000))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
+These are your existing modules; keep files as-is
 
-    logger.info(f"Web server started on port {port}")
+from handlers.start import start_router from handlers.premium import premium_router from handlers.admin import admin_router from handlers.language import language_router
 
-# -------------------- Main --------------------
+====== HEALTH SERVER (Render requirement) ======
 
-async def main():
-    dp.include_router(start_router)
-    dp.include_router(premium_router)
-    dp.include_router(admin_router)
+async def health_check(request): return web.Response(text="Bot is running")
 
-    logger.info("Bot started")
+async def start_web_server(): app = web.Application() app.router.add_get("/", health_check) app.router.add_get("/health", health_check)
 
-    # Start web server for Render (IMPORTANT)
-    await start_web_server()
+runner = web.AppRunner(app)
+await runner.setup()
+site = web.TCPSite(runner, "0.0.0.0", PORT)
+await site.start()
 
-    try:
-        await dp.start_polling(bot, skip_updates=True)
-    finally:
-        await bot.session.close()
+logger.info(f"Health server started on port {PORT}")
 
-# -------------------- Entry Point --------------------
+====== MAIN ======
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Bot stopped manually")
+async def main(): bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML) dp = Dispatcher(storage=MemoryStorage())
+
+# Register routers
+dp.include_router(start_router)
+dp.include_router(premium_router)
+dp.include_router(language_router)
+dp.include_router(admin_router)
+
+await start_web_server()
+
+logger.info("Bot started successfully")
+try:
+    await dp.start_polling(bot, skip_updates=True)
+finally:
+    await bot.session.close()
+
+if name == "main": asyncio.run(main())
