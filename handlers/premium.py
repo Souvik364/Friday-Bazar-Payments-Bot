@@ -59,7 +59,6 @@ async def show_premium_plans(message: Message, state: FSMContext, bot: Bot):
     
     await state.set_state(PremiumStates.waiting_for_plan_selection)
     
-    # Use translated text for "Choose Plan"
     plan_text = get_text(lang, "choose_plan")
     
     await message.answer(
@@ -74,7 +73,7 @@ async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     from handlers.start import get_main_menu_keyboard
     await callback.message.answer(
-        get_text(lang, "welcome", callback.from_user.first_name), # Re-show welcome or simple menu text
+        get_text(lang, "welcome", callback.from_user.first_name),
         reply_markup=get_main_menu_keyboard(lang)
     )
 
@@ -115,7 +114,6 @@ async def process_plan_selection(callback: CallbackQuery, state: FSMContext, bot
     qr_buffer = generate_payment_qr(plan_name_short, amount)
     qr_photo = BufferedInputFile(qr_buffer.read(), filename="payment_qr.png")
     
-    # Use translated payment details text
     caption_text = get_text(lang, "payment_details", plan_name_short, amount, timer_end_time.strftime('%I:%M %p'))
     
     await callback.message.answer_photo(
@@ -125,7 +123,6 @@ async def process_plan_selection(callback: CallbackQuery, state: FSMContext, bot
         reply_markup=get_payment_actions_keyboard(lang)
     )
     
-    # Translated Timer Message
     await callback.message.answer(get_text(lang, "timer_started"), parse_mode="HTML")
     
     asyncio.create_task(start_payment_timer(bot, callback.message.chat.id, state, duration=300))
@@ -144,7 +141,6 @@ async def handle_payment_screenshot(message: Message, state: FSMContext, bot: Bo
     photo = message.photo[-1]
     await state.set_state(PremiumStates.pending_approval)
     
-    # Send translated confirmation to user
     await message.answer(get_text(lang, "screenshot_received"), parse_mode="HTML")
     
     # Admin notification (Always English)
@@ -164,3 +160,4 @@ async def handle_payment_screenshot(message: Message, state: FSMContext, bot: Bo
         )
     except Exception as e:
         logger.error(f"Admin notify failed: {e}")
+        
