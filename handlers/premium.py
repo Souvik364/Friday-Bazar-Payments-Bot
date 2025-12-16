@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import re  # Import regex for email validation
 from datetime import datetime, timedelta
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
@@ -12,16 +11,16 @@ from handlers import PremiumStates
 from utils.qr_generator import generate_payment_qr
 from utils.timer import start_payment_timer
 from config import ADMIN_ID
+# NEW IMPORTS
 from utils.translations import get_text
 from handlers.language import get_user_language
 
 logger = logging.getLogger(__name__)
 premium_router = Router()
 
-# --- KEYBOARDS ---
-
 def get_plan_selection_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+    """Create inline keyboard with plan options."""
+    keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="1 Month - ₹20", callback_data="plan_1month_20")],
             [InlineKeyboardButton(text="3 Months - ₹55", callback_data="plan_3months_55")],
@@ -29,43 +28,42 @@ def get_plan_selection_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text=get_text(lang, "back_menu"), callback_data="back_to_menu")]
         ]
     )
+    return keyboard
 
 def get_payment_actions_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+    """Create keyboard for actions during payment."""
+    keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text=get_text(lang, "upload_now"), callback_data="upload_now")],
             [InlineKeyboardButton(text=get_text(lang, "cancel_payment"), callback_data="cancel_payment")]
         ]
     )
+    return keyboard
 
 def get_admin_approval_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+    keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="✅ Approve", callback_data=f"approve_{user_id}"),
              InlineKeyboardButton(text="❌ Reject", callback_data=f"reject_{user_id}")],
             [InlineKeyboardButton(text="📞 Contact User", callback_data=f"contact_{user_id}")]
         ]
     )
+    return keyboard
 
-def get_final_success_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
-    """Keyboard for final success message with Contact Admin button."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="💬 Contact Admin for Help", url=f"tg://user?id={ADMIN_ID}")]
-        ]
-    )
-
-# --- PLAN SELECTION & PAYMENT FLOW ---
-
+# TRIGGER: Recognizes "YouTube Premium" in all 3 languages
 @premium_router.message(F.text.in_(["🎥 YouTube Premium", "🎥 YouTube Premium", "🎥 YouTube Premium"])) 
 async def show_premium_plans(message: Message, state: FSMContext, bot: Bot):
     lang = await get_user_language(state)
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
     await asyncio.sleep(0.5)
+    
     await state.set_state(PremiumStates.waiting_for_plan_selection)
     
+    # Use translated text for "Choose Plan"
+    plan_text = get_text(lang, "choose_plan")
+    
     await message.answer(
-        get_text(lang, "choose_plan"),
+        plan_text,
         parse_mode="HTML",
         reply_markup=get_plan_selection_keyboard(lang)
     )
@@ -76,7 +74,7 @@ async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     from handlers.start import get_main_menu_keyboard
     await callback.message.answer(
-        get_text(lang, "welcome", callback.from_user.first_name),
+        get_text(lang, "welcome", callback.from_user.first_name), # Re-show welcome or simple menu text
         reply_markup=get_main_menu_keyboard(lang)
     )
 
@@ -117,6 +115,7 @@ async def process_plan_selection(callback: CallbackQuery, state: FSMContext, bot
     qr_buffer = generate_payment_qr(plan_name_short, amount)
     qr_photo = BufferedInputFile(qr_buffer.read(), filename="payment_qr.png")
     
+    # Use translated payment details text
     caption_text = get_text(lang, "payment_details", plan_name_short, amount, timer_end_time.strftime('%I:%M %p'))
     
     await callback.message.answer_photo(
@@ -126,7 +125,9 @@ async def process_plan_selection(callback: CallbackQuery, state: FSMContext, bot
         reply_markup=get_payment_actions_keyboard(lang)
     )
     
+    # Translated Timer Message
     await callback.message.answer(get_text(lang, "timer_started"), parse_mode="HTML")
+    
     asyncio.create_task(start_payment_timer(bot, callback.message.chat.id, state, duration=300))
 
 @premium_router.callback_query(F.data == "upload_now")
@@ -143,8 +144,10 @@ async def handle_payment_screenshot(message: Message, state: FSMContext, bot: Bo
     photo = message.photo[-1]
     await state.set_state(PremiumStates.pending_approval)
     
+    # Send translated confirmation to user
     await message.answer(get_text(lang, "screenshot_received"), parse_mode="HTML")
     
+    # Admin notification (Always English)
     user_id = message.from_user.id
     username = message.from_user.username or "No username"
     full_name = message.from_user.full_name
@@ -161,56 +164,4 @@ async def handle_payment_screenshot(message: Message, state: FSMContext, bot: Bo
         )
     except Exception as e:
         logger.error(f"Admin notify failed: {e}")
-
-# --- EMAIL COLLECTION & FINALIZATION LOGIC ---
-
-@premium_router.message(StateFilter(PremiumStates.waiting_for_email))
-async def handle_email_input(message: Message, state: FSMContext, bot: Bot):
-    """
-    Validates email and sends final confirmation details.
-    """
-    email = message.text.strip()
-    lang = await get_user_language(state)
     
-    # Basic email regex validation
-    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    
-    if not re.match(email_regex, email):
-        error_msg = "❌ <b>Invalid Email Format</b>\nPlease enter a valid email address (e.g., yourname@gmail.com)."
-        await message.answer(error_msg, parse_mode="HTML")
-        return
-
-    # Valid email logic
-    await state.update_data(user_email=email)
-    
-    # Notify User (Final Success)
-    success_msg = (
-        f"🎉 <b>Thank You!</b>\n\n"
-        f"📧 Email recorded: <code>{email}</code>\n\n"
-        f"✅ <b>Your Premium Plan is Active!</b>\n"
-        f"We have sent the login details/activation link to your email.\n\n"
-        f"❓ <i>For further enquiry or issues, please contact admin below.</i>"
-    )
-    
-    await message.answer(
-        success_msg,
-        parse_mode="HTML",
-        reply_markup=get_final_success_keyboard(lang)
-    )
-    
-    # Notify Admin that email was collected
-    user_data = await state.get_data()
-    plan_name = user_data.get("plan_name", "Unknown")
-    
-    await bot.send_message(
-        chat_id=ADMIN_ID,
-        text=f"✅ <b>USER EMAIL RECEIVED</b>\n\n"
-             f"👤 User: {message.from_user.full_name}\n"
-             f"🆔 ID: <code>{message.from_user.id}</code>\n"
-             f"📦 Plan: {plan_name}\n"
-             f"📧 Email: <code>{email}</code>\n\n"
-             f"<i>Please proceed with activation for this email.</i>",
-        parse_mode="HTML"
-    )
-    
-    await state.clear()
