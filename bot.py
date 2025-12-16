@@ -1,13 +1,18 @@
 import asyncio
 import logging
 import os
+import sys
+
+# Force Python to see the folders
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import ErrorEvent
 
 from config import BOT_TOKEN
-# IMPORT ROUTERS - ORDER MATTERS
+# IMPORT ROUTERS
 from handlers.language import language_router 
 from handlers.start import start_router
 from handlers.premium import premium_router
