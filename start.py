@@ -90,26 +90,4 @@ async def cmd_cancel(message: Message, state: FSMContext):
     lang = await get_user_language(state)
     await state.clear()
     await message.answer("❌ Cancelled / रद्द किया गया / বাতিল হয়েছে", reply_markup=get_main_menu_keyboard(lang))
-        
-        if 'waiting_for_plan_selection' in current_state:
-            status_text += "📍 Status: <b>Browsing plans</b>\n"
-        elif 'viewing_qr' in current_state or 'timer_running' in current_state:
-            status_text += "📍 Status: <b>Payment in progress</b>\n"
-            status_text += f"💎 Plan: {plan_name}\n"
-            status_text += f"💰 Amount: ₹{amount}\n"
-            status_text += "\n⏰ You have up to 5 minutes to complete payment and upload screenshot."
-        elif 'waiting_for_screenshot' in current_state:
-            status_text += "📍 Status: <b>Waiting for payment screenshot</b>\n"
-            status_text += f"💎 Plan: {plan_name}\n"
-            status_text += f"💰 Amount: ₹{amount}\n"
-        elif 'pending_approval' in current_state:
-            status_text += "📍 Status: <b>Pending admin approval</b>\n"
-            status_text += f"💎 Plan: {plan_name}\n"
-            status_text += f"💰 Amount: ₹{amount}\n"
-            status_text += "\n⏳ Your payment is being reviewed by admin."
-    else:
-        status_text += "📍 Status: <b>Free user</b>\n"
-        status_text += "🎥 YouTube Premium: <b>Not active</b>\n\n"
-        status_text += "🌟 Upgrade to YouTube Premium to enjoy ad-free experience!"
     
-    await message.answer(status_text, parse_mode="HTML")
