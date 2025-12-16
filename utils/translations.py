@@ -1,5 +1,3 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
 """
 Multi-language translations for YouTube Premium Bot
 Supports: English, Bengali (বাংলা), Hindi (हिन्दी)
@@ -321,6 +319,7 @@ def get_text(lang: str, key: str, *args) -> str:
 
 def get_language_keyboard():
     """Get inline keyboard for language selection."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -330,3 +329,4 @@ def get_language_keyboard():
         ]
     )
     return keyboard
+    
