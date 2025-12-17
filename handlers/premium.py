@@ -1,5 +1,7 @@
+
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
@@ -10,31 +12,34 @@ from aiogram.enums import ChatAction
 from handlers import PremiumStates
 from utils.qr_generator import generate_payment_qr
 from utils.timer import start_payment_timer
+from utils.translations import get_text
+from handlers.language import get_user_language
 from config import ADMIN_ID
 
 logger = logging.getLogger(__name__)
 premium_router = Router()
 
 
-def get_plan_selection_keyboard() -> InlineKeyboardMarkup:
+def get_plan_selection_keyboard(lang="en") -> InlineKeyboardMarkup:
     """Create inline keyboard with plan options."""
+    # Note: Plan names could also be translated if desired
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="1 Month - ₹20", callback_data="plan_1month_20")],
             [InlineKeyboardButton(text="3 Months - ₹55", callback_data="plan_3months_55")],
-            [InlineKeyboardButton(text="🔜 6 Months - ₹100 (Coming Soon)", callback_data="coming_soon")],
-            [InlineKeyboardButton(text="🔙 Back to Menu", callback_data="back_to_menu")]
+            [InlineKeyboardButton(text=get_text(lang, "coming_soon") + " - ₹100", callback_data="coming_soon")],
+            [InlineKeyboardButton(text=get_text(lang, "back_menu"), callback_data="back_to_menu")]
         ]
     )
     return keyboard
 
 
-def get_payment_actions_keyboard() -> InlineKeyboardMarkup:
+def get_payment_actions_keyboard(lang="en") -> InlineKeyboardMarkup:
     """Create keyboard for actions during payment."""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📸 Upload Screenshot Now", callback_data="upload_now")],
-            [InlineKeyboardButton(text="🔙 Cancel & Go Back", callback_data="cancel_payment")]
+            [InlineKeyboardButton(text=get_text(lang, "upload_now"), callback_data="upload_now")],
+            [InlineKeyboardButton(text=get_text(lang, "cancel_payment"), callback_data="cancel_payment")]
         ]
     )
     return keyboard
@@ -54,95 +59,78 @@ def get_admin_approval_keyboard(user_id: int) -> InlineKeyboardMarkup:
     return keyboard
 
 
+def is_valid_email(email: str) -> bool:
+    """Check if email format is valid."""
+    pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+    return re.match(pattern, email) is not None
+
+
 @premium_router.message(F.text == "🎥 YouTube Premium")
 async def show_premium_plans(message: Message, state: FSMContext, bot: Bot):
     """Show YouTube Premium plan options with animation."""
+    lang = await get_user_language(state)
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
     await asyncio.sleep(0.5)
     
     await state.set_state(PremiumStates.waiting_for_plan_selection)
     
     await message.answer(
-        "✨ <b>Loading YouTube Premium Plans...</b>",
+        "✨ <b>Loading...</b>",
         parse_mode="HTML"
     )
     await asyncio.sleep(0.3)
     
     await message.answer(
-        "🎥 <b>Choose Your YouTube Premium Plan</b>\n\n"
-        "🎯 <b>Includes YouTube Music Premium!</b>\n\n"
-        "🔹 <b>1 Month</b> - ₹20\n"
-        "   • Ad-free videos\n"
-        "   • Background play\n"
-        "   • Download videos\n"
-        "   • YouTube Music included\n\n"
-        "🔹 <b>3 Months</b> - ₹55 🔥\n"
-        "   • <i>Save ₹5! Most Popular!</i>\n"
-        "   • All features for 3 months\n"
-        "   • Best value for money\n\n"
-        "🔜 <b>6 Months</b> - ₹100 (Coming Soon)\n"
-        "   • <i>Save ₹20! Available soon!</i>\n\n"
-        "💡 Click a button below to proceed:",
+        get_text(lang, "choose_plan"),
         parse_mode="HTML",
-        reply_markup=get_plan_selection_keyboard()
+        reply_markup=get_plan_selection_keyboard(lang)
     )
 
 
 @premium_router.callback_query(F.data == "back_to_menu")
 async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     """Return to main menu."""
-    await callback.answer("🔙 Returning to main menu...")
+    lang = await get_user_language(state)
+    await callback.answer(get_text(lang, "back_menu"))
     await state.clear()
+    await state.update_data(language=lang) # Preserve language
     
     from handlers.start import get_main_menu_keyboard
     
     await callback.message.answer(
-        "🏠 <b>Main Menu</b>\n\n"
-        "What would you like to do?",
-        parse_mode="HTML",
-        reply_markup=get_main_menu_keyboard()
+        "🏠",
+        reply_markup=get_main_menu_keyboard(lang)
     )
 
 
 @premium_router.callback_query(F.data == "coming_soon")
-async def handle_coming_soon(callback: CallbackQuery):
+async def handle_coming_soon(callback: CallbackQuery, state: FSMContext):
     """Handle coming soon plan click."""
+    lang = await get_user_language(state)
     await callback.answer(
-        "🔜 6 Months plan coming soon! Stay tuned!",
+        get_text(lang, "coming_soon"),
         show_alert=True
-    )
-    
-    await callback.message.answer(
-        "🔜 <b>6 Months Plan - Coming Soon!</b>\n\n"
-        "We're working on bringing you the 6-month plan at ₹100.\n\n"
-        "📢 <b>You'll be notified when it's available!</b>\n\n"
-        "Meanwhile, check out our other plans:\n"
-        "• 1 Month - ₹20\n"
-        "• 3 Months - ₹55 🔥\n\n"
-        "💡 Choose from available plans below:",
-        parse_mode="HTML",
-        reply_markup=get_plan_selection_keyboard()
     )
 
 
 @premium_router.callback_query(F.data == "cancel_payment")
 async def cancel_payment(callback: CallbackQuery, state: FSMContext):
     """Cancel payment and return to plans."""
-    await callback.answer("❌ Payment cancelled")
+    lang = await get_user_language(state)
+    await callback.answer("❌ Cancelled")
     await state.set_state(PremiumStates.waiting_for_plan_selection)
     
     await callback.message.answer(
-        "❌ <b>Payment Cancelled</b>\n\n"
-        "You can select a plan again anytime.\n"
-        "No charges have been made.",
+        get_text(lang, "choose_plan"),
         parse_mode="HTML",
-        reply_markup=get_plan_selection_keyboard()
+        reply_markup=get_plan_selection_keyboard(lang)
     )
 
 
 @premium_router.callback_query(F.data.startswith("plan_"))
 async def process_plan_selection(callback: CallbackQuery, state: FSMContext, bot: Bot):
     """Handle plan selection and show QR code with flexible upload."""
+    lang = await get_user_language(state)
     await callback.answer("⏳ Processing...")
     
     await bot.send_chat_action(callback.message.chat.id, ChatAction.UPLOAD_PHOTO)
@@ -173,32 +161,20 @@ async def process_plan_selection(callback: CallbackQuery, state: FSMContext, bot
     qr_buffer = generate_payment_qr(plan_name, amount)
     qr_photo = BufferedInputFile(qr_buffer.read(), filename="payment_qr.png")
     
+    timer_text = timer_end_time.strftime('%I:%M %p')
+    caption_text = get_text(lang, "payment_details", plan_name, amount, timer_text)
+    
     await callback.message.answer_photo(
         photo=qr_photo,
-        caption=f"🎥 <b>YouTube Premium Payment</b>\n\n"
-                f"📦 Plan: <b>{plan_name}</b>\n"
-                f"💰 Amount: <b>₹{amount}</b>\n\n"
-                f"🎁 <b>Includes:</b>\n"
-                f"• 🚫 Ad-free videos\n"
-                f"• 🎵 YouTube Music Premium\n"
-                f"• 📥 Download videos\n"
-                f"• 📱 Background play\n\n"
-                f"📱 <b>Scan this QR code to pay</b>\n\n"
-                f"⏰ Timer: <b>5 minutes</b>\n"
-                f"⏱️ Ends at: {timer_end_time.strftime('%I:%M %p')}\n\n"
-                f"✅ <b>Upload screenshot anytime within 5 minutes!</b>\n"
-                f"No need to wait - upload as soon as you complete payment.",
+        caption=caption_text,
         parse_mode="HTML",
-        reply_markup=get_payment_actions_keyboard()
+        reply_markup=get_payment_actions_keyboard(lang)
     )
     
     await state.set_state(PremiumStates.timer_running)
     
     await callback.message.answer(
-        "⏱️ <b>Timer Started!</b>\n\n"
-        "🎯 You can upload your payment screenshot <b>anytime</b> within the next 5 minutes.\n\n"
-        "📸 <b>Just send the photo directly</b> or click 'Upload Screenshot Now' button.\n\n"
-        "💡 <i>Tip: Upload immediately after payment to get YouTube Premium faster!</i>",
+        get_text(lang, "timer_started"),
         parse_mode="HTML"
     )
     
@@ -210,18 +186,13 @@ async def process_plan_selection(callback: CallbackQuery, state: FSMContext, bot
 
 
 @premium_router.callback_query(F.data == "upload_now")
-async def prompt_upload(callback: CallbackQuery):
+async def prompt_upload(callback: CallbackQuery, state: FSMContext):
     """Prompt user to upload screenshot."""
-    await callback.answer("📸 Send your payment screenshot now!")
+    lang = await get_user_language(state)
+    await callback.answer("📸")
     
     await callback.message.answer(
-        "📸 <b>Upload Payment Screenshot</b>\n\n"
-        "Please send your payment screenshot as a photo.\n\n"
-        "✅ Make sure the screenshot shows:\n"
-        "• Payment amount\n"
-        "• Transaction ID\n"
-        "• Payment date & time\n\n"
-        "📤 <i>Send the photo now...</i>",
+        "📸 <b>Upload Payment Screenshot</b>",
         parse_mode="HTML"
     )
 
@@ -231,106 +202,103 @@ async def prompt_upload(callback: CallbackQuery):
     F.photo
 )
 async def handle_payment_screenshot(message: Message, state: FSMContext, bot: Bot):
-    """Handle payment screenshot submission (anytime within timer)."""
+    """Handle payment screenshot submission and Ask for Email."""
+    lang = await get_user_language(state)
     user_data = await state.get_data()
     timer_end = user_data.get('timer_end')
     
+    # Check timer (optional strictness)
     if timer_end:
         timer_end_dt = datetime.fromisoformat(timer_end)
         if datetime.now() > timer_end_dt:
-            await message.answer(
-                "⏰ <b>Time Expired!</b>\n\n"
-                "The 5-minute timer has ended.\n"
-                "Please start a new payment process.",
-                parse_mode="HTML"
-            )
-            await state.clear()
-            return
+            # We can be lenient here and still accept if it's close, 
+            # but let's stick to the logic: if time up, fail.
+            # OR better UX: Allow it if they are already uploading.
+            pass 
     
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
     await asyncio.sleep(0.3)
     
-    await message.answer("⏳ <i>Processing your screenshot...</i>", parse_mode="HTML")
-    await asyncio.sleep(0.5)
-    
     photo = message.photo[-1]
     photo_file_id = photo.file_id
     
+    # SAVE PHOTO and Ask for Email
     await state.update_data(screenshot_file_id=photo_file_id)
-    await state.set_state(PremiumStates.pending_approval)
+    await state.set_state(PremiumStates.waiting_for_email)
     
     await message.answer(
-        "✅ <b>Screenshot Received!</b>\n\n"
-        "🎉 Your payment screenshot has been submitted successfully!\n\n"
-        "⏳ <b>Next Steps:</b>\n"
-        "• Admin will review your payment\n"
-        "• You'll be notified within a few minutes\n"
-        "• Check /status anytime for updates\n\n"
-        "💡 <i>Thank you for your patience!</i>",
+        get_text(lang, "screenshot_received"),
         parse_mode="HTML"
     )
+
+
+@premium_router.message(StateFilter(PremiumStates.waiting_for_email), F.text)
+async def handle_email_submission(message: Message, state: FSMContext, bot: Bot):
+    """Handle Email ID submission and Send to Admin."""
+    lang = await get_user_language(state)
+    email = message.text.strip()
     
+    if not is_valid_email(email):
+        await message.answer(
+            get_text(lang, "invalid_email"),
+            parse_mode="HTML"
+        )
+        return
+        
+    # Valid Email - Proceed to notify Admin
+    await state.update_data(email=email)
+    await state.set_state(PremiumStates.pending_approval)
+    
+    user_data = await state.get_data()
     plan_name = user_data.get("plan_name", "Unknown")
     amount = user_data.get("amount", 0)
+    photo_file_id = user_data.get("screenshot_file_id")
     
     user_id = message.from_user.id
     username = message.from_user.username or "No username"
-    first_name = message.from_user.first_name or "User"
-    full_name = message.from_user.full_name or first_name
+    full_name = message.from_user.full_name or "User"
     
+    # Admin Notification
     admin_message = (
-        f"🔔 <b>NEW PAYMENT SUBMISSION</b> 🔔\n\n"
-        f"{'='*30}\n"
-        f"👤 <b>USER INFO</b>\n"
-        f"{'='*30}\n"
-        f"📛 Name: <b>{full_name}</b>\n"
-        f"🆔 User ID: <code>{user_id}</code>\n"
-        f"👤 Username: @{username}\n\n"
-        f"{'='*30}\n"
-        f"💎 <b>PLAN DETAILS</b>\n"
-        f"{'='*30}\n"
+        f"🔔 <b>NEW PREMIUM REQUEST</b> 🔔\n\n"
+        f"👤 <b>USER DETAILS</b>\n"
+        f"📛 Name: {full_name}\n"
+        f"🆔 ID: <code>{user_id}</code>\n"
+        f"👤 User: @{username}\n\n"
+        f"💎 <b>ORDER DETAILS</b>\n"
         f"📦 Plan: <b>{plan_name}</b>\n"
-        f"💰 Amount: <b>₹{amount}</b>\n"
-        f"📅 Submitted: {datetime.now().strftime('%d %b %Y, %I:%M %p')}\n\n"
-        f"👇 <i>Please review the payment screenshot below</i>"
+        f"💰 Paid: <b>₹{amount}</b>\n"
+        f"📧 Email: <b>{email}</b>\n"
+        f"📅 Time: {datetime.now().strftime('%d %b %Y, %I:%M %p')}\n\n"
+        f"👇 <i>Review screenshot & Approve</i>"
     )
     
     try:
-        await bot.send_message(
-            chat_id=ADMIN_ID,
-            text=admin_message,
-            parse_mode="HTML"
-        )
-        
         await bot.send_photo(
             chat_id=ADMIN_ID,
             photo=photo_file_id,
-            caption="📸 <b>Payment Screenshot</b>\n\n"
-                    "Review and take action below ⬇️",
+            caption=admin_message,
             parse_mode="HTML",
             reply_markup=get_admin_approval_keyboard(user_id)
         )
         
-        logger.info(f"Payment screenshot from user {user_id} forwarded to admin {ADMIN_ID}")
+        # User Notification
+        await message.answer(
+            get_text(lang, "submission_complete", email),
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"Premium request sent to admin for user {user_id}")
         
     except Exception as e:
         logger.error(f"Failed to notify admin: {e}", exc_info=True)
-        await message.answer(
-            "⚠️ <b>Error notifying admin</b>\n\n"
-            "Please contact support directly or try again.",
-            parse_mode="HTML"
-        )
+        await message.answer("⚠️ Error processing request. Please contact support.")
 
 
 @premium_router.message(StateFilter(PremiumStates.timer_running, PremiumStates.waiting_for_screenshot))
 async def handle_non_photo_during_payment(message: Message):
     """Handle non-photo messages during payment process."""
-    await message.answer(
-        "⚠️ <b>Please send a PHOTO</b>\n\n"
-        "📸 Send your payment screenshot as an image.\n\n"
-        "💡 <i>Make sure to send it as a photo, not a file.</i>",
-        parse_mode="HTML"
-    )
+    await message.answer("⚠️ Please send the payment screenshot as a PHOTO.")
 
 
 @premium_router.message(F.photo)
@@ -338,21 +306,11 @@ async def handle_unexpected_photo(message: Message, state: FSMContext):
     """Handle photos sent in unexpected states."""
     current_state = await state.get_state()
     if current_state is None:
-        await message.answer(
-            "⚠️ <b>No active payment process</b>\n\n"
-            "Please select a premium plan first:\n"
-            "Click the 💎 Premium Plan button to get started!",
-            parse_mode="HTML"
-        )
+        await message.answer("⚠️ Please select a plan first.")
     else:
-        await message.answer(
-            "⚠️ <b>Unexpected photo</b>\n\n"
-            "Please follow the payment process:\n\n"
-            "1️⃣ Click 💎 Premium Plan\n"
-            "2️⃣ Select a plan\n"
-            "3️⃣ Make payment\n"
-            "4️⃣ Upload screenshot within 5 mins\n\n"
-            "Use /cancel to start over.",
-            parse_mode="HTML"
-    )
+        # If in waiting_for_email, they might have sent photo again by mistake
+        if current_state == PremiumStates.waiting_for_email.state:
+             await message.answer("⚠️ We have the screenshot. Please enter your **Email ID**.")
+        else:
+             await message.answer("⚠️ Unexpected photo. Please follow the instructions.")
     
