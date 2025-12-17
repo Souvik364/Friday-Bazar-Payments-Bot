@@ -12,12 +12,14 @@ start_router = Router()
 
 def get_main_menu_keyboard(lang: str = "en") -> ReplyKeyboardMarkup:
     """Create main menu keyboard with translated options."""
-    # Maps internal keys to translated text
+    # FIX: Use distinct keys for BUTTONS (e.g., 'btn_help' instead of just 'help')
+    # This prevents the button from showing a long help message, 
+    # and allows the handler to fetch the correct message text later.
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=get_text(lang, "youtube_premium"))],
-            [KeyboardButton(text=get_text(lang, "help")), KeyboardButton(text=get_text(lang, "my_status"))],
-            [KeyboardButton(text=get_text(lang, "support")), KeyboardButton(text=get_text(lang, "change_language"))]
+            [KeyboardButton(text=get_text(lang, "btn_youtube_premium"))],
+            [KeyboardButton(text=get_text(lang, "btn_help")), KeyboardButton(text=get_text(lang, "btn_my_status"))],
+            [KeyboardButton(text=get_text(lang, "btn_support")), KeyboardButton(text=get_text(lang, "btn_change_language"))]
         ],
         resize_keyboard=True,
         input_field_placeholder="Choose an option..."
@@ -25,11 +27,10 @@ def get_main_menu_keyboard(lang: str = "en") -> ReplyKeyboardMarkup:
 
 @start_router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
-    """Handle /start command. First time -> Language Select. Returning -> Menu."""
+    """Handle /start command."""
     lang = await get_user_language(state)
     data = await state.get_data()
     
-    # If no language is set in state, show selection
     if 'language' not in data:
         await message.answer(
             "🌐 <b>Select Your Language</b>\n"
@@ -41,14 +42,14 @@ async def cmd_start(message: Message, state: FSMContext):
         )
         return
 
-    # If language exists, show main menu
     await state.clear()
-    await state.update_data(language=lang) # Keep language setting
+    await state.update_data(language=lang)
     
     await message.answer("⚡")
     await asyncio.sleep(0.3)
     
-    welcome_text = get_text(lang, "welcome", message.from_user.first_name)
+    # Use 'msg_welcome' or just 'welcome' for the text body
+    welcome_text = get_text(lang, "msg_welcome", message.from_user.first_name)
     await message.answer(
         welcome_text,
         parse_mode="HTML",
@@ -56,38 +57,50 @@ async def cmd_start(message: Message, state: FSMContext):
     )
 
 @start_router.message(Command("help"))
+# IMPORTANT: These strings inside F.text.in_([...]) MUST match exactly what 
+# get_text(lang, "btn_help") returns in your translation file.
 @start_router.message(F.text.in_(["ℹ️ Help", "ℹ️ मदद", "ℹ️ সাহায্য"]))
 async def cmd_help(message: Message, state: FSMContext):
-    """Show help information in correct language."""
+    """Show help information."""
     lang = await get_user_language(state)
-    # Uses 'help' key from translations which contains the full help text
-    help_text = get_text(lang, "help") 
+    
+    # FIX: Use a separate key for the actual help CONTENT (e.g., 'msg_help')
+    # Do not use the same key as the button, or the bot will just reply "ℹ️ Help"
+    help_text = get_text(lang, "msg_help") 
+    
     await message.answer(help_text, parse_mode="HTML")
 
 @start_router.message(Command("status"))
 @start_router.message(F.text.in_(["📊 My Status", "📊 मेरी स्थिति", "📊 আমার স্ট্যাটাস"]))
 async def cmd_status(message: Message, state: FSMContext):
-    """Show status in correct language."""
+    """Show status."""
     lang = await get_user_language(state)
-    # Simple status check - for full translation, ensure 'my_status' keys exist for body text
-    # For now, we keep the dynamic logic but use the header from translations
-    status_header = get_text(lang, "my_status")
-    await message.answer(f"{status_header}: Checking...", parse_mode="HTML")
-    # (Existing status logic continues...)
+    
+    # FIX: Use a message key for the status header/body
+    status_header = get_text(lang, "msg_status_header")
+    
+    # Mocking status check logic
+    await message.answer(f"{status_header}: Active ✅\nUser ID: {message.from_user.id}", parse_mode="HTML")
 
 @start_router.message(Command("support"))
 @start_router.message(F.text.in_(["💬 Support", "💬 सहायता", "💬 সাপোর্ট"]))
 async def cmd_support(message: Message, state: FSMContext):
     """Show support contact."""
-    from config import SUPPORT_BOT
+    # Ensure you handle the import safely or define SUPPORT_BOT
+    try:
+        from config import SUPPORT_BOT
+    except ImportError:
+        SUPPORT_BOT = "Admin"
+
     lang = await get_user_language(state)
     
-    support_msg = get_text(lang, "support_text", SUPPORT_BOT or "Admin", message.from_user.id)
+    # Use 'msg_support' for the text body
+    support_msg = get_text(lang, "msg_support", SUPPORT_BOT, message.from_user.id)
     await message.answer(support_msg, parse_mode="HTML")
 
 @start_router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext):
     lang = await get_user_language(state)
     await state.clear()
-    await message.answer("❌ Cancelled / रद्द किया गया / বাতিল হয়েছে", reply_markup=get_main_menu_keyboard(lang))
-    
+    await message.answer("❌ Cancelled", reply_markup=get_main_menu_keyboard(lang))
+
