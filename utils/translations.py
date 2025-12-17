@@ -333,9 +333,9 @@ def get_language_keyboard():
     
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🇬🇧 English", callback_data="lang_en")],
-            [InlineKeyboardButton(text="🇮🇳 हिन्दी (Hindi)", callback_data="lang_hi")],
-            [InlineKeyboardButton(text="🇧🇩 বাংলা (Bengali)", callback_data="lang_bn")]
+            [InlineKeyboardButton(text="🌐 English", callback_data="lang_en")],
+            [InlineKeyboardButton(text="🌐 हिन्दी (Hindi)", callback_data="lang_hi")],
+            [InlineKeyboardButton(text="🌐 বাংলা (Bengali)", callback_data="lang_bn")]
         ]
     )
     return keyboard
