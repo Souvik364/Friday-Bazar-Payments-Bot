@@ -1,3 +1,4 @@
+
 import logging
 import asyncio
 from aiogram import Router, F, Bot
@@ -7,6 +8,8 @@ from aiogram.filters import Command
 from aiogram.enums import ChatAction
 
 from config import ADMIN_ID
+from utils.translations import get_text
+from handlers.language import get_user_language
 
 logger = logging.getLogger(__name__)
 admin_router = Router()
@@ -41,13 +44,12 @@ async def contact_user(callback: CallbackQuery, bot: Bot):
     
     try:
         user_id = int(user_id_str)
-        await callback.answer("📞 Opening chat with user...")
+        await callback.answer("📞 Opening chat...")
         
         await callback.message.answer(
             f"📞 <b>Contact User</b>\n\n"
             f"User ID: <code>{user_id}</code>\n\n"
-            f"Click to message: tg://user?id={user_id}\n\n"
-            f"Or use /msg {user_id} your_message_here",
+            f"Click to message: <a href='tg://user?id={user_id}'>Message User</a>",
             parse_mode="HTML"
         )
     except Exception as e:
@@ -70,133 +72,64 @@ async def handle_admin_decision(callback: CallbackQuery, bot: Bot, state: FSMCon
         await callback.answer("❌ Invalid user ID", show_alert=True)
         return
     
+    # Get user state to determine language
+    user_state = FSMContext(
+        bot=bot,
+        storage=state.storage,
+        key=state.key.with_user_id(user_id)
+    )
+    lang = await get_user_language(user_state)
+    
     await bot.send_chat_action(callback.message.chat.id, ChatAction.TYPING)
     await callback.answer("⏳ Processing...")
-    await asyncio.sleep(0.3)
     
     try:
         if action == "approve":
+            # Send Approved Message to User
             await bot.send_message(
                 chat_id=user_id,
-                text="🎉 <b>CONGRATULATIONS!</b> 🎉\n\n"
-                     "✅ Your payment has been <b>APPROVED</b>!\n\n"
-                     "🎥 <b>Your YouTube Premium is Now ACTIVE!</b>\n\n"
-                     "🎁 <b>Features Unlocked:</b>\n"
-                     "• ✅ Ad-free YouTube videos\n"
-                     "• ✅ YouTube Music Premium\n"
-                     "• ✅ Download videos & music\n"
-                     "• ✅ Background playback\n"
-                     "• ✅ YouTube Originals access\n\n"
-                     "💡 Type /status to view your subscription details\n\n"
-                     "🙏 <i>Thank you for choosing YouTube Premium!</i>",
+                text=get_text(lang, "approved"),
                 parse_mode="HTML"
             )
             
+            # Update Admin Message
             await callback.message.edit_caption(
                 caption=f"{callback.message.caption}\n\n"
-                        f"✅ <b>APPROVED</b> ✅\n"
+                        f"✅ <b>APPROVED</b>\n"
                         f"By: Admin\n"
-                        f"Time: {asyncio.get_event_loop().time()}",
+                        f"Time: {datetime.now().strftime('%H:%M:%S')}",
                 parse_mode="HTML",
                 reply_markup=None
             )
             
-            await bot.send_message(
-                chat_id=ADMIN_ID,
-                text=f"✅ <b>Payment Approved Successfully</b>\n\n"
-                     f"User ID: <code>{user_id}</code>\n"
-                     f"User has been notified.",
-                parse_mode="HTML"
-            )
-            
-            await callback.answer("✅ Approved successfully!", show_alert=False)
-            logger.info(f"Admin {ADMIN_ID} approved payment for user {user_id}")
+            await bot.send_message(ADMIN_ID, f"✅ Approved User {user_id}")
             
         elif action == "reject":
+            # Send Rejected Message to User
             await bot.send_message(
                 chat_id=user_id,
-                text="❌ <b>Payment Verification Failed</b>\n\n"
-                     "Unfortunately, your payment could not be verified.\n\n"
-                     "📝 <b>Possible Reasons:</b>\n"
-                     "• Incorrect payment amount\n"
-                     "• Incomplete transaction details\n"
-                     "• Payment not received\n\n"
-                     "💡 <b>What to do next:</b>\n"
-                     "• Double-check your payment\n"
-                     "• Try again with correct details\n"
-                     "• Contact support for help\n\n"
-                     "📞 Need assistance? Use /help to contact support.",
+                text=get_text(lang, "rejected"),
                 parse_mode="HTML"
             )
             
+            # Update Admin Message
             await callback.message.edit_caption(
                 caption=f"{callback.message.caption}\n\n"
-                        f"❌ <b>REJECTED</b> ❌\n"
+                        f"❌ <b>REJECTED</b>\n"
                         f"By: Admin\n"
-                        f"Time: {asyncio.get_event_loop().time()}",
+                        f"Time: {datetime.now().strftime('%H:%M:%S')}",
                 parse_mode="HTML",
                 reply_markup=None
             )
             
-            await bot.send_message(
-                chat_id=ADMIN_ID,
-                text=f"❌ <b>Payment Rejected</b>\n\n"
-                     f"User ID: <code>{user_id}</code>\n"
-                     f"User has been notified.",
-                parse_mode="HTML"
-            )
-            
-            await callback.answer("❌ Rejected!", show_alert=False)
-            logger.info(f"Admin {ADMIN_ID} rejected payment for user {user_id}")
+            await bot.send_message(ADMIN_ID, f"❌ Rejected User {user_id}")
         
-        user_state = FSMContext(
-            bot=bot,
-            storage=state.storage,
-            key=state.key.with_user_id(user_id)
-        )
+        # Clear User State
         await user_state.clear()
+        # Restore language preference
+        await user_state.update_data(language=lang)
         
     except Exception as e:
         logger.error(f"Error processing admin decision: {e}", exc_info=True)
+        await callback.answer("❌ Error occurred (User might have blocked bot)", show_alert=True)
         
-        error_msg = str(e).lower()
-        if "bot was blocked" in error_msg:
-            await callback.answer("⚠️ User has blocked the bot", show_alert=True)
-            await bot.send_message(
-                chat_id=ADMIN_ID,
-                text=f"⚠️ <b>Cannot notify user</b>\n\n"
-                     f"User ID: <code>{user_id}</code>\n"
-                     f"Reason: User blocked the bot",
-                parse_mode="HTML"
-            )
-        elif "chat not found" in error_msg:
-            await callback.answer("⚠️ User chat not found", show_alert=True)
-        else:
-            await callback.answer("❌ Error sending notification", show_alert=True)
-        
-        await callback.message.edit_caption(
-            caption=f"{callback.message.caption}\n\n"
-                    f"⚠️ <b>ACTION FAILED</b>\n"
-                    f"Could not notify user: {e}",
-            parse_mode="HTML",
-            reply_markup=None
-        )
-
-
-@admin_router.message(Command("stats"))
-async def admin_stats(message: Message):
-    """Show bot statistics (admin only)."""
-    if message.from_user.id != ADMIN_ID:
-        return
-    
-    await message.answer(
-        "📊 <b>BOT STATISTICS</b>\n\n"
-        "👥 Total Users: <code>-</code>\n"
-        "💎 Premium Users: <code>-</code>\n"
-        "💰 Total Revenue: <code>₹-</code>\n"
-        "⏳ Pending Payments: <code>-</code>\n\n"
-        "📈 <i>Statistics tracking coming soon!</i>\n"
-        "💡 <i>Add database integration for detailed stats.</i>",
-        parse_mode="HTML"
-    )
-    
